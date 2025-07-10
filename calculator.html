@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AffiliatePro • Calculadora de Profit</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script type="module" src="firebase-init.js"></script>
+</head>
+<body>
+  <header>
+    <nav class="navbar">
+      <div class="logo">AffiliatePro</div>
+      <ul class="nav-links">
+        <li><a href="dashboard.html">⬅ Volver al Dashboard</a></li>
+        <li><button id="logoutBtn" class="btn-secondary">Salir</button></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <section class="profit-calculator-section">
+      <h1>Calculadora de Profit Avanzada</h1>
+      <p>Ingresa los parámetros de tu campaña para estimar comisión, ROI y ganancias netas.</p>
+
+      <!-- Calculator Form -->
+      <form id="calcForm" class="calc-form">
+        <div class="form-grid">
+          <label>Precio del Producto ($)
+            <input type="number" step="0.01" id="price" required />
+          </label>
+          <label>Comisión (%)
+            <input type="number" step="0.1" id="commission" required />
+          </label>
+          <label>Ventas Estimadas (#)
+            <input type="number" id="sales" required />
+          </label>
+          <label>Gasto en Ads ($)
+            <input type="number" step="0.01" id="adSpend" required />
+          </label>
+          <label>Tasa de Conversión (%)
+            <input type="number" step="0.1" id="conversion" required />
+          </label>
+        </div>
+        <button type="submit" class="btn-primary">Calcular</button>
+      </form>
+
+      <!-- Results -->
+      <div id="results" class="results-box" style="display:none;">
+        <h2>Resultados</h2>
+        <p><strong>Comisión por Venta:</strong> $<span id="commissionPerSale"></span></p>
+        <p><strong>Ingresos Brutos (Comisiones):</strong> $<span id="grossRevenue"></span></p>
+        <p><strong>Ganancia Neta:</strong> $<span id="netProfit"></span></p>
+        <p><strong>ROI:</strong> <span id="roi"></span>%</p>
+        <button id="saveCalcBtn" class="btn-secondary">Guardar Cálculo</button>
+      </div>
+
+      <!-- Saved Calculations List -->
+      <h2>Mis Cálculos Guardados</h2>
+      <table id="calcsTable" class="offers-table">
+        <thead>
+          <tr>
+            <th>Fecha</th>
+            <th>Producto $</th>
+            <th>Comisión %</th>
+            <th>Ventas</th>
+            <th>Ad Spend $</th>
+            <th>ROI %</th>
+            <th>Ganancia $</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>
+    <p>&copy; <span id="year"></span> AffiliatePro</p>
+  </footer>
+
+  <script type="module">
+    import { auth, db } from './firebase-init.js';
+    import { collection, addDoc, query, where, getDocs, Timestamp } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-firestore.js';
+    import { onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js';
+
+    const calcForm = document.getElementById('calcForm');
+    const resultsBox = document.getElementById('results');
+    const commissionPerSaleEl = document.getElementById('commissionPerSale');
+    const grossRevenueEl = document.getElementById('grossRevenue');
+    const netProfitEl = document.getElementById('netProfit');
+    const roiEl = document.getElementById('roi');
+    const saveCalcBtn = document.getElementById('saveCalcBtn');
+    const calcsTableBody = document.querySelector('#calcsTable tbody');
+    document.getElementById('year').textContent = new Date().getFullYear();
+
+    document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+
+    let currentUser;
+    let lastCalcData = null;
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        window.location.href = 'auth.html';
+        return;
+      }
+      currentUser = user;
+      await loadCalcs();
+    });
+
+    calcForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const price = parseFloat(document.getElementById('price').value);
+      const commissionPercent = parseFloat(document.getElementById('commission').value);
+      const sales = parseInt(document.getElementById('sales').value);
+      const adSpend = parseFloat(document.getElementById('adSpend').value);
+      const conversion = parseFloat(document.getElementById('conversion').value);
+
+      const commissionPerSale = (price * commissionPercent) / 100;
+      const grossRevenue = commissionPerSale * sales;
+      const netProfit = grossRevenue - adSpend;
+      const roi = adSpend > 0 ? ((netProfit / adSpend) * 100) : 0;
+
+      commissionPerSaleEl.textContent = commissionPerSale.toFixed(2);
+      grossRevenueEl.textContent = grossRevenue.toFixed(2);
+      netProfitEl.textContent = netProfit.toFixed(2);
+      roiEl.textContent = roi.toFixed(2);
+
+      resultsBox.style.display = 'block';
+
+      lastCalcData = {
+        price,
+        commissionPercent,
+        sales,
+        adSpend,
+        conversion,
+        commissionPerSale,
+        grossRevenue,
+        netProfit,
+        roi,
+      };
+    });
+
+    saveCalcBtn.addEventListener('click', async () => {
+      if (!currentUser || !lastCalcData) return;
+      const docData = {
+        userId: currentUser.uid,
+        ...lastCalcData,
+        createdAt: Timestamp.now(),
+      };
+      await addDoc(collection(db, 'profitCalcs'), docData);
+      alert('Cálculo guardado');
+      await loadCalcs();
+    });
+
+    async function loadCalcs() {
+      if (!currentUser) return;
+      calcsTableBody.innerHTML = '<tr><td colspan="7">Cargando...</td></tr>';
+      const q = query(collection(db, 'profitCalcs'), where('userId', '==', currentUser.uid));
+      const snapshot = await getDocs(q);
+      calcsTableBody.innerHTML = '';
+      if (snapshot.empty) {
+        calcsTableBody.innerHTML = '<tr><td colspan="7">Aún no tienes cálculos guardados.</td></tr>';
+        return;
+      }
+      snapshot.forEach((docSnap) => {
+        const d = docSnap.data();
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${d.createdAt.toDate().toLocaleDateString()}</td>
+          <td>${d.price.toFixed(2)}</td>
+          <td>${d.commissionPercent.toFixed(1)}</td>
+          <td>${d.sales}</td>
+          <td>${d.adSpend.toFixed(2)}</td>
+          <td>${d.roi.toFixed(2)}</td>
+          <td>${d.netProfit.toFixed(2)}</td>
+        `;
+        calcsTableBody.appendChild(tr);
+      });
+    }
+  </script>
+</body>
+</html>
