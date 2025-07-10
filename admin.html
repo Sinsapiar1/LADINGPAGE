@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AffiliatePro • Panel Admin</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script type="module" src="firebase-init.js"></script>
+</head>
+<body>
+  <header>
+    <nav class="navbar">
+      <div class="logo">AffiliatePro - Admin</div>
+      <button id="logoutBtn" class="btn-secondary">Salir</button>
+    </nav>
+  </header>
+
+  <main>
+    <section class="admin-section">
+      <h1>Gestión de Usuarios</h1>
+      <table id="usersTable">
+        <thead>
+          <tr>
+            <th>Email</th>
+            <th>Plan</th>
+            <th>Rol</th>
+            <th>Acciones</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script type="module">
+    import { auth, db } from './firebase-init.js';
+    import { collection, getDocs, doc, updateDoc } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-firestore.js';
+    import { onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js';
+
+    const tbody = document.querySelector('#usersTable tbody');
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        window.location.href = 'auth.html';
+        return;
+      }
+
+      const userDoc = await getDocs(collection(db, 'users'));
+      tbody.innerHTML = '';
+      userDoc.forEach((docSnap) => {
+        const data = docSnap.data();
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${data.email}</td>
+          <td><input type="text" value="${data.plan}" data-id="${docSnap.id}" class="plan-input"></td>
+          <td>${data.role}</td>
+          <td><button data-id="${docSnap.id}" class="save-btn">Guardar</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+    });
+
+    // Save plan change
+    document.addEventListener('click', async (e) => {
+      if (e.target.matches('.save-btn')) {
+        const uid = e.target.dataset.id;
+        const planValue = document.querySelector(`input[data-id="${uid}"]`).value;
+        await updateDoc(doc(db, 'users', uid), { plan: planValue });
+        alert('Plan actualizado');
+      }
+    });
+
+    // Logout
+    document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+  </script>
+</body>
+</html>
