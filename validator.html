@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AffiliatePro • Validador de Ofertas</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script type="module" src="firebase-init.js"></script>
+</head>
+<body>
+  <header>
+    <nav class="navbar">
+      <div class="logo">AffiliatePro</div>
+      <ul class="nav-links">
+        <li><a href="dashboard.html">⬅ Volver al Dashboard</a></li>
+        <li><button id="logoutBtn" class="btn-secondary">Salir</button></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <section class="validator-section">
+      <h1>Validador de Ofertas</h1>
+      <p>Ingresa los detalles de un producto de afiliado para calcular su potencial y guardarlo en tu portafolio.</p>
+
+      <!-- Offer Form -->
+      <form id="offerForm" class="offer-form">
+        <div class="form-grid">
+          <label>Nombre del Producto<input type="text" id="prodName" required /></label>
+          <label>Nicho<input type="text" id="prodNiche" required /></label>
+          <label>Plataforma<select id="prodPlatform" required>
+            <option value="Amazon">Amazon</option>
+            <option value="ClickBank">ClickBank</option>
+            <option value="Shopify">Shopify</option>
+            <option value="Otro">Otro</option>
+          </select></label>
+          <label>Comisión (%)<input type="number" step="0.1" id="prodCommission" required /></label>
+          <label>Volumen de Búsqueda<input type="number" id="prodSearch" required /></label>
+        </div>
+        <button class="btn-primary" type="submit">Calcular y Guardar</button>
+      </form>
+
+      <!-- Offers Table -->
+      <h2>Mis Productos Validados</h2>
+      <table class="offers-table" id="offersTable">
+        <thead>
+          <tr>
+            <th>Nombre</th>
+            <th>Nicho</th>
+            <th>Plataforma</th>
+            <th>Potencial</th>
+            <th>Comisión %</th>
+            <th>Vol. Búsqueda</th>
+            <th>Creado</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>
+    <p>&copy; <span id="year"></span> AffiliatePro</p>
+  </footer>
+
+  <script type="module">
+    import { auth, db } from './firebase-init.js';
+    import { collection, addDoc, query, where, getDocs, Timestamp } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-firestore.js';
+    import { onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js';
+
+    const offersTableBody = document.querySelector('#offersTable tbody');
+    const offerForm = document.getElementById('offerForm');
+    const yearSpan = document.getElementById('year');
+    yearSpan.textContent = new Date().getFullYear();
+
+    // Logout
+    document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+
+    let currentUser;
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        window.location.href = 'auth.html';
+        return;
+      }
+      currentUser = user;
+      await loadOffers();
+    });
+
+    // Load offers from Firestore
+    async function loadOffers() {
+      if (!currentUser) return;
+      offersTableBody.innerHTML = '<tr><td colspan="7">Cargando...</td></tr>';
+      const q = query(collection(db, 'products'), where('userId', '==', currentUser.uid));
+      const querySnapshot = await getDocs(q);
+      offersTableBody.innerHTML = '';
+      querySnapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${data.name}</td>
+          <td>${data.niche}</td>
+          <td>${data.platform}</td>
+          <td>${data.metrics.potential}</td>
+          <td>${data.metrics.commission}</td>
+          <td>${data.metrics.searchVolume}</td>
+          <td>${data.createdAt.toDate().toLocaleDateString()}</td>
+        `;
+        offersTableBody.appendChild(tr);
+      });
+    }
+
+    // Form submit
+    offerForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!currentUser) return;
+
+      const name = document.getElementById('prodName').value.trim();
+      const niche = document.getElementById('prodNiche').value.trim();
+      const platform = document.getElementById('prodPlatform').value;
+      const commission = parseFloat(document.getElementById('prodCommission').value);
+      const searchVolume = parseInt(document.getElementById('prodSearch').value);
+
+      // Simple potential calculation (placeholder)
+      const potential = Math.round((commission / 100) * searchVolume);
+
+      const newOffer = {
+        userId: currentUser.uid,
+        name,
+        niche,
+        platform,
+        metrics: {
+          potential,
+          competition: 'unknown',
+          commission,
+          searchVolume,
+        },
+        createdAt: Timestamp.now(),
+      };
+
+      await addDoc(collection(db, 'products'), newOffer);
+
+      // Clear form
+      offerForm.reset();
+      alert('Producto guardado');
+      await loadOffers();
+    });
+  </script>
+</body>
+</html>
