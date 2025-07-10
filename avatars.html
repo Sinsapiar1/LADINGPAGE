@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AffiliatePro • Generador de Avatares</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script type="module" src="firebase-init.js"></script>
+</head>
+<body>
+  <header>
+    <nav class="navbar">
+      <div class="logo">AffiliatePro</div>
+      <ul class="nav-links">
+        <li><a href="dashboard.html">⬅ Volver al Dashboard</a></li>
+        <li><button id="logoutBtn" class="btn-secondary">Salir</button></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <section class="avatar-generator-section">
+      <h1>Generador de Avatares Psicográficos</h1>
+      <p>Define las características de tu audiencia objetivo y genera un perfil completo para tus campañas.</p>
+
+      <!-- Avatar Form -->
+      <form id="avatarForm" class="avatar-form">
+        <div class="form-grid">
+          <label>Nombre del Avatar<input type="text" id="avatarName" placeholder="Ej. Carla la Emprendedora" required /></label>
+          <label>Rango de Edad<input type="text" id="avatarAge" placeholder="25-34" required /></label>
+          <label>Género<select id="avatarGender" required>
+            <option value="Femenino">Femenino</option>
+            <option value="Masculino">Masculino</option>
+            <option value="Otro">Otro</option>
+          </select></label>
+          <label>Intereses (separados por coma)<textarea id="avatarInterests" placeholder="Marketing, Fitness, Tecnología" required></textarea></label>
+          <label>Puntos de Dolor<textarea id="avatarPains" placeholder="Falta de tiempo, Altos costos publicitarios" required></textarea></label>
+          <label>Objetivos<textarea id="avatarGoals" placeholder="Escalar su negocio online" required></textarea></label>
+        </div>
+        <button class="btn-primary" type="submit">Generar y Guardar Avatar</button>
+      </form>
+
+      <!-- Avatars List -->
+      <h2>Mis Avatares</h2>
+      <div id="avatarsContainer" class="avatars-container"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>&copy; <span id="year"></span> AffiliatePro</p>
+  </footer>
+
+  <script type="module">
+    import { auth, db } from './firebase-init.js';
+    import { collection, addDoc, query, where, getDocs, Timestamp } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-firestore.js';
+    import { onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js';
+
+    const avatarsContainer = document.getElementById('avatarsContainer');
+    const avatarForm = document.getElementById('avatarForm');
+    const yearSpan = document.getElementById('year');
+    yearSpan.textContent = new Date().getFullYear();
+
+    // Logout button
+    document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+
+    let currentUser;
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        window.location.href = 'auth.html';
+        return;
+      }
+      currentUser = user;
+      await loadAvatars();
+    });
+
+    // Load avatars
+    async function loadAvatars() {
+      if (!currentUser) return;
+      avatarsContainer.innerHTML = '<p>Cargando...</p>';
+      const q = query(collection(db, 'avatars'), where('userId', '==', currentUser.uid));
+      const snapshot = await getDocs(q);
+      avatarsContainer.innerHTML = '';
+      if (snapshot.empty) {
+        avatarsContainer.innerHTML = '<p>Aún no tienes avatares creados.</p>';
+        return;
+      }
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const card = createAvatarCard(data);
+        avatarsContainer.appendChild(card);
+      });
+    }
+
+    // Create avatar card DOM
+    function createAvatarCard(data) {
+      const div = document.createElement('div');
+      div.className = 'avatar-card';
+      div.innerHTML = `
+        <h3>${data.name}</h3>
+        <p><strong>Edad:</strong> ${data.ageRange}</p>
+        <p><strong>Género:</strong> ${data.gender}</p>
+        <p><strong>Intereses:</strong> ${data.interests.join(', ')}</p>
+        <p><strong>Puntos de Dolor:</strong> ${data.painPoints}</p>
+        <p><strong>Objetivos:</strong> ${data.goals}</p>
+        <small>Creado: ${data.createdAt.toDate().toLocaleDateString()}</small>
+      `;
+      return div;
+    }
+
+    // Form submit
+    avatarForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!currentUser) return;
+
+      const name = document.getElementById('avatarName').value.trim();
+      const ageRange = document.getElementById('avatarAge').value.trim();
+      const gender = document.getElementById('avatarGender').value;
+      const interests = document.getElementById('avatarInterests').value.split(',').map(i => i.trim()).filter(Boolean);
+      const painPoints = document.getElementById('avatarPains').value.trim();
+      const goals = document.getElementById('avatarGoals').value.trim();
+
+      const newAvatar = {
+        userId: currentUser.uid,
+        name,
+        ageRange,
+        gender,
+        interests,
+        painPoints,
+        goals,
+        createdAt: Timestamp.now(),
+      };
+
+      await addDoc(collection(db, 'avatars'), newAvatar);
+      avatarForm.reset();
+      alert('Avatar creado');
+      await loadAvatars();
+    });
+  </script>
+</body>
+</html>
