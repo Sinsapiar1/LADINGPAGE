@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AffiliatePro • Dashboard</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script type="module" src="firebase-init.js"></script>
+</head>
+<body>
+  <header>
+    <nav class="navbar">
+      <div class="logo">AffiliatePro</div>
+      <ul class="nav-links">
+        <li><a href="#validator">Validador de Ofertas</a></li>
+        <li><a href="#avatars">Avatares</a></li>
+        <li><a href="#funnel">Funnel Architect</a></li>
+        <li><a href="admin.html" id="adminLink" style="display:none;">Admin</a></li>
+        <li><button id="logoutBtn" class="btn-secondary">Salir</button></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <section class="welcome">
+      <h1>Bienvenido, <span id="userEmail"></span></h1>
+      <p>Plan actual: <strong id="userPlan"></strong></p>
+    </section>
+
+    <section id="modules" class="modules-grid">
+      <div class="module-card" id="validator">
+        <h3>Validador de Ofertas</h3>
+        <p>Analiza la viabilidad y comisión de productos rápidamente.</p>
+        <a href="validator.html" class="btn-primary">Abrir</a>
+      </div>
+      <div class="module-card" id="avatars">
+        <h3>Generador de Avatares</h3>
+        <p>Crea perfiles psicográficos precisos.</p>
+        <a href="avatars.html" class="btn-primary">Abrir</a>
+      </div>
+      <div class="module-card" id="funnel">
+        <h3>Funnel Architect</h3>
+        <p>Construye embudos con drag & drop.</p>
+        <a href="funnel.html" class="btn-primary">Abrir</a>
+      </div>
+      <div class="module-card" id="profit-calculator">
+        <h3>Calculadora de Profit</h3>
+        <p>Calcula ROI y ganancias detalladas.</p>
+        <a href="calculator.html" class="btn-primary">Abrir</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>&copy; <span id="year"></span> AffiliatePro</p>
+  </footer>
+
+  <script type="module">
+    import { auth, db } from './firebase-init.js';
+    import { doc, getDoc } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-firestore.js';
+
+    // Auth state
+    import { onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js';
+
+    const userEmailEl = document.getElementById('userEmail');
+    const userPlanEl = document.getElementById('userPlan');
+    const adminLink = document.getElementById('adminLink');
+
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        window.location.href = 'auth.html';
+        return;
+      }
+      userEmailEl.textContent = user.email;
+
+      // Fetch additional user data
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        const { plan, role } = userDoc.data();
+        userPlanEl.textContent = plan;
+        if (role === 'admin') {
+          adminLink.style.display = 'inline-block';
+        }
+      }
+    });
+
+    // Logout
+    document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+
+    // Year in footer
+    document.getElementById('year').textContent = new Date().getFullYear();
+  </script>
+</body>
+</html>

@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AffiliatePro • Funnel Architect</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script type="module" src="firebase-init.js"></script>
+  <!-- SortableJS for drag & drop -->
+  <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+</head>
+<body>
+  <header>
+    <nav class="navbar">
+      <div class="logo">AffiliatePro</div>
+      <ul class="nav-links">
+        <li><a href="dashboard.html">⬅ Volver al Dashboard</a></li>
+        <li><button id="logoutBtn" class="btn-secondary">Salir</button></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main>
+    <section class="funnel-architect-section">
+      <h1>Funnel Architect (Drag & Drop)</h1>
+      <p>Arrastra los bloques desde la paleta al lienzo para construir tu embudo. Puedes reordenar los pasos a tu gusto.</p>
+
+      <!-- Funnel Name -->
+      <input type="text" id="funnelName" placeholder="Nombre del Funnel" class="funnel-name-input" />
+
+      <div class="funnel-builder-grid">
+        <!-- Palette -->
+        <div class="palette" id="palette">
+          <h2>Paleta</h2>
+          <div class="palette-item" draggable="true" data-type="Landing Page">Landing Page</div>
+          <div class="palette-item" draggable="true" data-type="Opt-in">Opt-in Form</div>
+          <div class="palette-item" draggable="true" data-type="Sales Page">Sales Page</div>
+          <div class="palette-item" draggable="true" data-type="Checkout">Checkout</div>
+          <div class="palette-item" draggable="true" data-type="Thank You">Thank You</div>
+        </div>
+
+        <!-- Canvas -->
+        <div class="canvas" id="canvas">
+          <h2>Embudo</h2>
+          <p class="placeholder">Arrastra aquí los pasos del embudo</p>
+        </div>
+      </div>
+
+      <!-- Save Button -->
+      <button id="saveFunnelBtn" class="btn-primary" style="margin-top:1rem;">Guardar Funnel</button>
+
+      <!-- Existing Funnels -->
+      <h2>Mis Funnels</h2>
+      <ul id="funnelsList" class="funnels-list"></ul>
+    </section>
+  </main>
+
+  <footer>
+    <p>&copy; <span id="year"></span> AffiliatePro</p>
+  </footer>
+
+  <script type="module">
+    import { auth, db } from './firebase-init.js';
+    import { collection, addDoc, query, where, getDocs, Timestamp } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-firestore.js';
+    import { onAuthStateChanged, signOut } from 'https://www.gstatic.com/firebasejs/10.11.1/firebase-auth.js';
+
+    const yearSpan = document.getElementById('year');
+    yearSpan.textContent = new Date().getFullYear();
+
+    document.getElementById('logoutBtn').addEventListener('click', () => signOut(auth));
+
+    const palette = document.getElementById('palette');
+    const canvas = document.getElementById('canvas');
+    const saveBtn = document.getElementById('saveFunnelBtn');
+    const funnelNameInput = document.getElementById('funnelName');
+    const funnelsList = document.getElementById('funnelsList');
+
+    let currentUser;
+
+    // Auth
+    onAuthStateChanged(auth, async (user) => {
+      if (!user) {
+        window.location.href = 'auth.html';
+        return;
+      }
+      currentUser = user;
+      await loadFunnels();
+    });
+
+    // Enable Sortable on palette (clone) and canvas (editable)
+    new Sortable(palette, {
+      group: {
+        name: 'shared',
+        pull: 'clone',
+        put: false,
+      },
+      sort: false,
+      animation: 150,
+    });
+
+    const canvasSortable = new Sortable(canvas, {
+      group: 'shared',
+      animation: 150,
+      draggable: '.palette-item',
+      onAdd: handleCanvasUpdate,
+      onUpdate: handleCanvasUpdate,
+      onRemove: handleCanvasUpdate,
+    });
+
+    function handleCanvasUpdate() {
+      // Remove placeholder text if there are items; else show
+      const placeholder = canvas.querySelector('.placeholder');
+      if (canvas.querySelectorAll('.palette-item').length > 0) {
+        placeholder && placeholder.remove();
+      } else if (!placeholder) {
+        const p = document.createElement('p');
+        p.className = 'placeholder';
+        p.textContent = 'Arrastra aquí los pasos del embudo';
+        canvas.appendChild(p);
+      }
+    }
+
+    // Save Funnel
+    saveBtn.addEventListener('click', async () => {
+      if (!currentUser) return;
+      const name = funnelNameInput.value.trim();
+      if (!name) {
+        alert('Ingresa un nombre para el funnel');
+        return;
+      }
+      const stepEls = canvas.querySelectorAll('.palette-item');
+      if (stepEls.length === 0) {
+        alert('Añade al menos un paso al funnel');
+        return;
+      }
+      const steps = Array.from(stepEls).map((el, idx) => ({
+        type: el.dataset.type,
+        position: idx,
+      }));
+
+      const newFunnel = {
+        userId: currentUser.uid,
+        name,
+        steps,
+        createdAt: Timestamp.now(),
+      };
+
+      await addDoc(collection(db, 'funnels'), newFunnel);
+      alert('Funnel guardado');
+      funnelNameInput.value = '';
+      canvas.innerHTML = '<h2>Embudo</h2><p class="placeholder">Arrastra aquí los pasos del embudo</p>';
+      await loadFunnels();
+    });
+
+    // Load existing funnels
+    async function loadFunnels() {
+      funnelsList.innerHTML = '<li>Cargando...</li>';
+      const q = query(collection(db, 'funnels'), where('userId', '==', currentUser.uid));
+      const snapshot = await getDocs(q);
+      funnelsList.innerHTML = '';
+      if (snapshot.empty) {
+        funnelsList.innerHTML = '<li>Aún no tienes funnels guardados.</li>';
+        return;
+      }
+      snapshot.forEach((docSnap) => {
+        const data = docSnap.data();
+        const li = document.createElement('li');
+        li.textContent = data.name + ' • ' + data.steps.length + ' pasos';
+        li.addEventListener('click', () => loadFunnelIntoCanvas(data));
+        funnelsList.appendChild(li);
+      });
+    }
+
+    function loadFunnelIntoCanvas(data) {
+      canvas.innerHTML = '<h2>Embudo</h2>';
+      data.steps.forEach((step) => {
+        const item = document.createElement('div');
+        item.className = 'palette-item';
+        item.draggable = true;
+        item.dataset.type = step.type;
+        item.textContent = step.type;
+        canvas.appendChild(item);
+      });
+      handleCanvasUpdate();
+      funnelNameInput.value = data.name;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  </script>
+</body>
+</html>
